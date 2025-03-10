@@ -117,10 +117,6 @@ func connrx(rdr net.Conn, routers chan<- *message, clientip uint32, readerr chan
 
 		// Send the packet to the routers
 		routers <- msg
-
-		// Metrics
-		rx_packetsmetric.Inc()
-		rx_bytesmetric.Add(float64(msg.len))
 	}
 }
 
@@ -147,10 +143,6 @@ func conntx(messages <-chan *message, conn net.Conn, writeerr chan<- bool, wait 
 		} else if n < len(msg.wirepacket) {
 			err = errors.New("short write")
 		}
-
-		// Metrics
-		tx_packetsmetric.Inc()
-		tx_bytesmetric.Add(float64(msg.len))
 	}
 }
 

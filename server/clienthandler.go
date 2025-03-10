@@ -38,10 +38,6 @@ func (s *Service) serve(conn net.Conn, tun chan<- *message, clientstate chan<- C
 		log.Print("client(perm): auf wiedersehen")
 	}()
 
-	// Metrics to track
-	tlsfail := client_failmetric.WithLabelValues("tls")
-	nocertfail := client_failmetric.WithLabelValues("nocert")
-
 	// Get a random connection id
 	id, err := randUint64()
 	if err != nil {
@@ -70,7 +66,6 @@ func (s *Service) serve(conn net.Conn, tun chan<- *message, clientstate chan<- C
 	// Progress to the tls handshake
 	if err := tlscon.Handshake(); err != nil {
 		cprintf("(term): TLS handshake failed: %s", err)
-		tlsfail.Inc()
 		return
 	} else {
 		cprint("TLS handshake completed")
@@ -79,7 +74,6 @@ func (s *Service) serve(conn net.Conn, tun chan<- *message, clientstate chan<- C
 	// Validate this connection as a valid new client
 	client, err := NewClient(tlscon)
 	if err != nil {
-		nocertfail.Inc()
 		cprintf("(term): error validating client: %s", err)
 
 		//Send HTTP 403 response
@@ -182,7 +176,6 @@ func (s *Service) serve(conn net.Conn, tun chan<- *message, clientstate chan<- C
 	defer func() {
 		// Record disconnect time in client
 		client.disconnected = time.Now()
-		client_disconnectmetric.Inc()
 
 		cprint("sending disconnect client state")
 
@@ -193,9 +186,6 @@ func (s *Service) serve(conn net.Conn, tun chan<- *message, clientstate chan<- C
 			client:     client,
 		}
 	}()
-
-	// Increment connect count metric here
-	client_connectmetric.Inc()
 
 	// Send client connect state change
 	// This causes the client.tx channel to be mounted by the tun router and it will now receieve traffic

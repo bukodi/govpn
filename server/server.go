@@ -4,18 +4,15 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"github.com/joshperry/govpn"
 	"log"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 
-	sysctl "github.com/lorenzosaino/go-sysctl"
-	"github.com/micro/go-micro/v2/config"
-	"github.com/micro/go-micro/v2/config/source/env"
-	"github.com/micro/go-micro/v2/config/source/file"
 	"github.com/songgao/water"
 	"github.com/vishvananda/netlink"
 )
@@ -32,47 +29,36 @@ const (
  */
 
 func main() {
-	log.SetFlags(log.Lshortfile)
+	err := start()
+	if err != nil {
+		panic(err)
+	}
+}
 
-	log.Print("server: loading config")
+func start() error {
 
 	// Find path to config file before loading config
 	// Get config path from the env
-	configfile := os.Getenv("GOVPN_CONFIG_FILE")
-	// A default value for the config path
-	if configfile == "" {
-		configfile = "config.yaml"
-	}
-	log.Printf("config file: %s", configfile)
-	config.Load(
-		// base config from file
-		file.NewSource(
-			file.WithPath(configfile),
-		),
-		// override file with env
-		env.NewSource(env.WithStrippedPrefix("GOVPN")),
-	)
 
-	confmap := config.Map()
-	log.Print(confmap)
-
+	govpn.LoadConfig()
 	// Load the server's PKI keypair
+
 	cer, err := tls.LoadX509KeyPair(
-		config.Get("tls", "cert").String("cert.pem"),
-		config.Get("tls", "key").String("key.pem"),
+		govpn.ConfigString("tls/cert"),
+		govpn.ConfigString("tls/key"),
 	)
 	if err != nil {
-		log.Fatalf("server: failed to load server PKI material: %s", err)
+		return fmt.Errorf("server: failed to load server PKI material: %w", err)
 	}
 
 	// Load client CA cert chain
 	certpool := x509.NewCertPool()
-	pem, err := ioutil.ReadFile(config.Get("tls", "ca").String("ca.pem"))
+	pem, err := os.ReadFile(govpn.ConfigString("tls/ca"))
 	if err != nil {
-		log.Fatalf("server: failed to read client certificate authority: %v", err)
+		return fmt.Errorf("server: failed to read client certificate authority: %w", err)
 	}
 	if !certpool.AppendCertsFromPEM(pem) {
-		log.Fatalf("server: failed to parse client certificate authority")
+		return fmt.Errorf("server: failed to parse client certificate authority")
 	}
 
 	// Create tls config with PKI material
@@ -90,12 +76,12 @@ func main() {
 	tlsconfig.BuildNameToCertificate()
 
 	// Parse the server address block
-	servernet, _ := netlink.ParseAddr(config.Get("secnet", "netblock").String("192.168.0.1/21"))
+	servernet, _ := netlink.ParseAddr(govpn.ConfigString("secnet/netblock"))
 	servernet.IP = int2ip(ip2int(servernet.IP.Mask(servernet.Mask)) + 1) // Set IP to first in the network
 
 	// Create tun interface
 	tunconfig := water.Config{DeviceType: water.TUN, PlatformSpecificParams: water.PlatformSpecificParams{MultiQueue: true}}
-	tunconfig.Name = config.Get("tun", "name").String("tun_govpn")
+	tunconfig.Name = govpn.ConfigString("tun/name")
 	iface, err := water.New(tunconfig)
 	if nil != err {
 		log.Fatalln("server: unable to allocate TUN interface:", err)
@@ -110,15 +96,16 @@ func main() {
 	nlhand.LinkSetUp(tunlink)
 
 	// Disable ipv6 on tun interface
-	err = sysctl.Set("net.ipv6.conf.tun_govpn.disable_ipv6", "1")
+	err = os.WriteFile("/proc/sys/net/ipv6/conf/tun_govpn/disable_ipv6", []byte("1"), 0644)
 
 	// Listen for clients
+	port, _ := strconv.Atoi(govpn.ConfigString("listen/port"))
 	listener, err := tls.Listen(
 		"tcp",
 		fmt.Sprintf(
 			"%s:%d",
-			config.Get("listen", "address").String("0.0.0.0"),
-			config.Get("listen", "port").Int(443),
+			govpn.ConfigString("listen/address"),
+			port,
 		),
 		tlsconfig,
 	)
@@ -159,4 +146,5 @@ func main() {
 	iface.Close()
 
 	log.Print("server(perm): goodbye")
+	return nil
 }

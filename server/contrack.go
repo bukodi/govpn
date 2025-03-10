@@ -6,10 +6,6 @@ import (
 )
 
 func contrack(subchan chan<- ClientStateSub, reportchan <-chan chan<- Connections) {
-	// Metrics to track
-	delcount := contrack_trackedmetric.WithLabelValues("delwait")
-	opencount := contrack_trackedmetric.WithLabelValues("open")
-
 	log.Print("server: contrack: starting")
 
 	contrack := make(map[string]*Client) // Like open
@@ -39,17 +35,12 @@ func contrack(subchan chan<- ClientStateSub, reportchan <-chan chan<- Connection
 					// Enforce single connection per client by disconnecting any existing connections for the client name
 					if (other.disconnected == time.Time{}) {
 						// Only send if it isn't disconnected already
-						contrack_enforcedmetric.Inc()
 						log.Printf("server: contrack: enforce disconnect on %s-%#x", other.name, other.id)
 						//TODO: close(other.control)
 					}
 					// Save the disconnecting client into the deltrack list to await its final goodbye
 					log.Printf("server: contrack: saving to deltrack %s-%#x", other.name, other.id)
 					deltrack[other.id] = other
-
-					delcount.Inc()
-				} else {
-					opencount.Inc()
 				}
 
 				log.Printf("server: contrack: tracking %s-%#x", state.client.name, state.client.id)
@@ -62,8 +53,6 @@ func contrack(subchan chan<- ClientStateSub, reportchan <-chan chan<- Connection
 					// If we are already waiting for disconnection
 					// just remove it from the deltrack list
 					delete(deltrack, state.client.id)
-
-					delcount.Dec()
 				} else {
 					// If there is an existing contrack entry
 					if client, ok := contrack[state.client.name]; ok && client.id == state.client.id {
@@ -71,7 +60,6 @@ func contrack(subchan chan<- ClientStateSub, reportchan <-chan chan<- Connection
 						log.Printf("server: contrack: closed last open for %s-%#x", state.client.name, state.client.id)
 						// Remove the client from the connection tracking list
 						delete(contrack, state.client.name)
-						opencount.Dec()
 					} else {
 						log.Printf("server: contrack(perm): got disconnect with zero tracking matches %s-%#x", state.client.name, state.client.id)
 						panic("zero tracking matches")

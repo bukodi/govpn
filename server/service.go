@@ -2,13 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/joshperry/govpn"
 	"log"
 	"math"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/micro/go-micro/v2/config"
 	"github.com/songgao/water"
 )
 
@@ -93,7 +93,7 @@ func (s *Service) Serve(listener net.Listener, tun *water.Interface, bufpool *sy
 	// Start up multiple readers/writers with separate queues
 	for range [7]int{} {
 		tunconfig := water.Config{DeviceType: water.TUN, PlatformSpecificParams: water.PlatformSpecificParams{MultiQueue: true}}
-		tunconfig.Name = config.Get("tun", "name").String("tun_govpn")
+		tunconfig.Name = govpn.ConfigString("tun/name")
 		if tun, err := water.New(tunconfig); nil != err {
 			log.Fatalln("server: unable to allocate additional TUN interface queue:", err)
 		} else {
@@ -138,9 +138,6 @@ func (s *Service) Serve(listener net.Listener, tun *water.Interface, bufpool *sy
 	s.shutdownGroup.Add(1)
 	go acceptor(listener, connchan, s.shutdownGroup)
 
-	// Start metrics http server
-	go metrics(reportchan)
-
 	// Forever select on the done channel, and the client connection handler channel
 	for {
 		select {
@@ -167,8 +164,6 @@ func (s *Service) Serve(listener net.Listener, tun *water.Interface, bufpool *sy
 			// Add a client to the waitgroup, and handle it in a goroutine
 			s.clientGroup.Add(1)
 			go s.serve(conn, tuntxchan, clientstate, bufpool, netblock)
-
-			acceptedmetric.Inc()
 		}
 	}
 }

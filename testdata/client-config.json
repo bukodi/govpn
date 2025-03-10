@@ -1,0 +1,11 @@
+{
+  "server": "localhost:443",
+  "tun": {
+    "name": "tun_govpnc"
+  },
+  "tls": {
+    "cert": "/src/govpn/testdata/tls_client.cer",
+    "key": "/src/govpn/testdata/tls_client_key.pkcs8",
+    "ca": "/src/govpn/testdata/root_ca.cer"
+  }
+}

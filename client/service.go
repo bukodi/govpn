@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"log"
 	"net/textproto"
+	"os"
 	"strconv"
 	"sync"
 	"time"
 
-	sysctl "github.com/lorenzosaino/go-sysctl"
 	"github.com/vishvananda/netlink"
 )
 
@@ -111,7 +111,7 @@ func service(tlscon *tls.Conn, tuntxstack filterstack, bufpool *sync.Pool, done 
 		nlhand.LinkSetUp(tunlink)
 
 		// Disable ipv6 on tun interface
-		err = sysctl.Set("net.ipv6.conf.tun_govpnc.disable_ipv6", "1")
+		err = os.WriteFile("/proc/sys/net/ipv6/conf/tun_govpn/disable_ipv6", []byte("1"), 0644)
 
 		// Ensure the buffered reader doesn't hold further data
 		if bufrx.Buffered() != 0 {
